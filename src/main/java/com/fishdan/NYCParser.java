@@ -10,8 +10,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -24,9 +27,11 @@ import org.apache.poi.util.IOUtils;
 import org.apache.poi.xssf.eventusermodel.ReadOnlySharedStringsTable;
 import org.apache.poi.xssf.eventusermodel.XSSFReader;
 import org.apache.poi.xssf.eventusermodel.XSSFSheetXMLHandler;
-import org.apache.poi.xssf.model.SharedStringsTable;
+import org.apache.poi.xssf.model.SharedStrings;
 import org.apache.poi.xssf.model.StylesTable;
 import org.apache.poi.xssf.usermodel.XSSFComment;
+import javax.xml.parsers.ParserConfigurationException;
+
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.XMLReader;
@@ -92,7 +97,7 @@ public final class NYCParser {
         try (OPCPackage pkg = OPCPackage.open(workbookPath.toFile(), PackageAccess.READ)) {
             XSSFReader reader = new XSSFReader(pkg);
             StylesTable styles = reader.getStylesTable();
-            SharedStringsTable sharedStrings = createSharedStrings(pkg);
+            SharedStrings sharedStrings = createSharedStrings(pkg);
 
             XSSFReader.SheetIterator sheets = (XSSFReader.SheetIterator) reader.getSheetsData();
             if (!sheets.hasNext()) {
@@ -108,12 +113,12 @@ public final class NYCParser {
                         context.formatter, false));
                 parser.parse(new InputSource(sheetStream));
             }
-        } catch (OpenXML4JException | SAXException e) {
+        } catch (OpenXML4JException | SAXException | ParserConfigurationException e) {
             throw new IOException("Error processing " + workbookPath.getFileName() + ": " + e.getMessage(), e);
         }
     }
 
-    private static SharedStringsTable createSharedStrings(OPCPackage pkg) throws IOException {
+    private static SharedStrings createSharedStrings(OPCPackage pkg) throws IOException {
         try {
             return new ReadOnlySharedStringsTable(pkg);
         } catch (SAXException e) {
@@ -160,16 +165,12 @@ public final class NYCParser {
         }
     }
 
-    private static boolean headersMatch(List<String> canonical, List<String> other) {
-        int size = Math.max(canonical.size(), other.size());
-        for (int i = 0; i < size; i++) {
-            String left = i < canonical.size() ? canonical.get(i) : "";
-            String right = i < other.size() ? other.get(i) : "";
-            if (!Objects.equals(left, right)) {
-                return false;
-            }
-        }
-        return true;
+    private static String normalizeHeader(String header) {
+        return valueOrEmpty(header).trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String valueOrEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private static int columnIndexFromReference(String cellReference, int nextColumnIndex) {
@@ -191,15 +192,72 @@ public final class NYCParser {
     private static final class MergeContext {
         private final BufferedWriter writer;
         private final DataFormatter formatter;
-        private List<String> header;
-        private int columnCount;
+        private List<String> canonicalHeaders;
+        private List<String> canonicalHeaderKeys;
         private long recordsWritten;
 
         private MergeContext(BufferedWriter writer, DataFormatter formatter) {
             this.writer = writer;
             this.formatter = formatter;
-            this.columnCount = -1;
             this.recordsWritten = 0L;
+        }
+
+        private List<Integer> registerHeader(List<String> headerRow, String workbookName) throws IOException {
+            if (canonicalHeaders == null) {
+                initializeCanonical(headerRow, workbookName);
+            }
+            return buildColumnMapping(headerRow, workbookName);
+        }
+
+        private void initializeCanonical(List<String> headerRow, String workbookName) throws IOException {
+            List<Integer> selectedIndices = new ArrayList<>();
+            for (int i = 0; i < headerRow.size(); i++) {
+                String header = valueOrEmpty(headerRow.get(i));
+                if (i < 2) {
+                    selectedIndices.add(i);
+                    continue;
+                }
+                String normalized = header.toLowerCase(Locale.ROOT);
+                if (normalized.startsWith("dem mayor choice")) {
+                    selectedIndices.add(i);
+                }
+            }
+            if (selectedIndices.isEmpty()) {
+                throw new IOException("No qualifying columns found in header for " + workbookName);
+            }
+            canonicalHeaders = new ArrayList<>(selectedIndices.size());
+            canonicalHeaderKeys = new ArrayList<>(selectedIndices.size());
+            for (int index : selectedIndices) {
+                String header = index < headerRow.size() ? valueOrEmpty(headerRow.get(index)) : "";
+                canonicalHeaders.add(header);
+                canonicalHeaderKeys.add(normalizeHeader(header));
+            }
+            writeCsvRow(writer, canonicalHeaders);
+        }
+
+        private List<Integer> buildColumnMapping(List<String> headerRow, String workbookName) {
+            Map<String, Integer> headerIndexMap = new HashMap<>();
+            for (int i = 0; i < headerRow.size(); i++) {
+                String key = normalizeHeader(headerRow.get(i));
+                headerIndexMap.putIfAbsent(key, i);
+            }
+            List<Integer> mapping = new ArrayList<>(canonicalHeaders.size());
+            for (int i = 0; i < canonicalHeaders.size(); i++) {
+                String key = canonicalHeaderKeys.get(i);
+                Integer index = headerIndexMap.get(key);
+                if (index == null && i < 2 && i < headerRow.size()) {
+                    // Fallback: assume positional alignment for first two columns.
+                    index = i;
+                }
+                if (index == null) {
+                    System.err.printf("Column '%s' missing in %s; filling with blanks.%n",
+                            canonicalHeaders.get(i), workbookName);
+                    mapping.add(-1);
+                } else {
+                    mapping.add(index);
+                }
+            }
+            return mapping;
         }
     }
 
@@ -208,6 +266,7 @@ public final class NYCParser {
         private final String workbookName;
         private final MergeContext context;
         private List<String> currentRowValues;
+        private List<Integer> columnIndexMapping;
 
         private StreamingSheetHandler(String workbookName, MergeContext context) {
             this.workbookName = workbookName;
@@ -221,7 +280,9 @@ public final class NYCParser {
 
         @Override
         public void endRow(int rowNum) {
-            trimTrailingEmpties(currentRowValues);
+            if (rowNum == 0) {
+                trimTrailingEmpties(currentRowValues);
+            }
             try {
                 if (rowNum == 0) {
                     handleHeaderRow();
@@ -257,13 +318,7 @@ public final class NYCParser {
                 return;
             }
 
-            if (context.header == null) {
-                context.header = new ArrayList<>(currentRowValues);
-                context.columnCount = context.header.size();
-                writeCsvRow(context.writer, context.header);
-            } else if (!headersMatch(context.header, currentRowValues)) {
-                System.err.printf("Header mismatch detected in %s. Proceeding with canonical header.%n", workbookName);
-            }
+            columnIndexMapping = context.registerHeader(currentRowValues, workbookName);
         }
 
         private void handleDataRow() throws IOException {
@@ -271,18 +326,22 @@ public final class NYCParser {
                 return;
             }
 
-            if (context.columnCount < 0) {
-                context.columnCount = currentRowValues.size();
+            if (columnIndexMapping == null) {
+                System.err.printf("No header mapping available for %s; skipping row.%n", workbookName);
+                return;
             }
 
-            while (currentRowValues.size() < context.columnCount) {
-                currentRowValues.add("");
-            }
-            if (currentRowValues.size() > context.columnCount) {
-                context.columnCount = currentRowValues.size();
+            List<String> projectedValues = new ArrayList<>(context.canonicalHeaders.size());
+            for (int position = 0; position < columnIndexMapping.size(); position++) {
+                int columnIndex = columnIndexMapping.get(position);
+                String value = "";
+                if (columnIndex >= 0 && columnIndex < currentRowValues.size()) {
+                    value = valueOrEmpty(currentRowValues.get(columnIndex));
+                }
+                projectedValues.add(value);
             }
 
-            writeCsvRow(context.writer, currentRowValues);
+            writeCsvRow(context.writer, projectedValues);
             context.recordsWritten++;
             if (context.recordsWritten % 5000 == 0) {
                 System.out.printf("Total records written: %,d%n", context.recordsWritten);
