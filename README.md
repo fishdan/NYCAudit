@@ -7,6 +7,8 @@
 - 2025-10-30: Running the original in-memory parser via `mvn exec:java` exposed multiple scaling issues (initial `ClassNotFoundException`, Apache POI's 100M byte-array ceiling, then JVM heap exhaustion even with `-Xmx6g`). We also attempted to estimate total row counts with a `unzip | grep | wc` pipeline, which timed out, reinforcing the dataset size challenge. Reworked `com.fishdan.NYCParser` to use POI's streaming SAX handler so rows are written incrementally with progress logged every 5,000 records; execution deferred per request pending confirmation.
 - 2025-10-30: Captured local environment specs via `uname -a`, `/etc/os-release`, `lscpu`, `free -h`, `java -version`, and `mvn -version` to document the hardware/software baseline for future runs.
 - 2025-10-30: Updated `com.fishdan.NYCParser` to project each workbook onto the first two columns plus any `DEM Mayor Choice…` columns, avoiding header-order mismatches across files while keeping the CSV footprint focused on the mayoral contest.
+- 2025-10-31: Verified MariaDB connectivity to host `192.168.1.10:3306` as user `dan`, created a `votes` table (`vote_record`, `precinct`, `choice1`–`choice5`), and bulk-loaded `data/combined_precincts.csv` (1,114,433 rows) via `LOAD DATA LOCAL INFILE`.
+- 2025-10-31: Converted `Primary Election 2025 - 06-24-2025_CandidacyID_To_Name.xlsx` to `candidates.csv`, defined the `candidates` table (`candidacy_id`, `default_ballot_name`), and ingested all 951 candidate rows into MariaDB.
 
 ## System Specs
 - OS: Ubuntu 24.04.3 LTS (kernel `6.8.0-86-generic`; `uname -a` confirms host `bubuntu` on x86_64).
