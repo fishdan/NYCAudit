@@ -11,6 +11,7 @@
 - 2025-10-31: Converted `Primary Election 2025 - 06-24-2025_CandidacyID_To_Name.xlsx` to `candidates.csv`, defined the `candidates` table (`candidacy_id`, `default_ballot_name`), and ingested all 951 candidate rows into MariaDB.
 - 2025-10-31: Created the `view_votes_named` view mapping each vote choice to the candidate's default ballot name by joining `votes` against `candidates`.
 - 2025-10-31: Aggregated first-choice (`choice1`) vote totals via `SELECT choice1, COUNT(*) FROM view_votes_named GROUP BY choice1 ORDER BY COUNT(*) DESC` and captured the results below.
+- 2025-10-31: Tallied second-choice (`choice2`) preferences conditioned on first-choice `Andrew M. Cuomo` via `SELECT choice2, COUNT(*) FROM view_votes_named WHERE choice1 = 'Andrew M. Cuomo' GROUP BY choice2 ORDER BY COUNT(*) DESC` (see breakdown below).
 
 ## System Specs
 - OS: Ubuntu 24.04.3 LTS (kernel `6.8.0-86-generic`; `uname -a` confirms host `bubuntu` on x86_64).
@@ -37,4 +38,23 @@ Jessica Ramos,4165
 Write-in,1570
 Paperboy Love Prince,1543
 Selma K. Bartholomew,1447
+```
+
+## Second-Choice Totals (First Choice = Andrew M. Cuomo)
+```
+choice2,total_votes
+undervote,165141
+Adrienne E. Adams,45388
+Scott M. Stringer,37636
+Brad Lander,36485
+Zohran Kwame Mamdani,27034
+Whitney R. Tilson,25167
+Zellnor Myrie,14844
+Andrew M. Cuomo,12146
+Jessica Ramos,10820
+Michael Blake,5256
+Paperboy Love Prince,2143
+Selma K. Bartholomew,2024
+Write-in,808
+overvote,506
 ```
