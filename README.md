@@ -9,6 +9,7 @@
 - 2025-10-30: Updated `com.fishdan.NYCParser` to project each workbook onto the first two columns plus any `DEM Mayor Choice…` columns, avoiding header-order mismatches across files while keeping the CSV footprint focused on the mayoral contest.
 - 2025-10-31: Verified MariaDB connectivity to host `192.168.1.10:3306` as user `dan`, created a `votes` table (`vote_record`, `precinct`, `choice1`–`choice5`), and bulk-loaded `data/combined_precincts.csv` (1,114,433 rows) via `LOAD DATA LOCAL INFILE`.
 - 2025-10-31: Converted `Primary Election 2025 - 06-24-2025_CandidacyID_To_Name.xlsx` to `candidates.csv`, defined the `candidates` table (`candidacy_id`, `default_ballot_name`), and ingested all 951 candidate rows into MariaDB.
+- 2025-10-31: Created the `view_votes_named` view mapping each vote choice to the candidate's default ballot name by joining `votes` against `candidates`.
 
 ## System Specs
 - OS: Ubuntu 24.04.3 LTS (kernel `6.8.0-86-generic`; `uname -a` confirms host `bubuntu` on x86_64).
