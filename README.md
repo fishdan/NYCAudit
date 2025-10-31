@@ -12,6 +12,7 @@
 - 2025-10-31: Created the `view_votes_named` view mapping each vote choice to the candidate's default ballot name by joining `votes` against `candidates`.
 - 2025-10-31: Aggregated first-choice (`choice1`) vote totals via `SELECT choice1, COUNT(*) FROM view_votes_named GROUP BY choice1 ORDER BY COUNT(*) DESC` and captured the results below.
 - 2025-10-31: Tallied second-choice (`choice2`) preferences conditioned on first-choice `Andrew M. Cuomo` via `SELECT choice2, COUNT(*) FROM view_votes_named WHERE choice1 = 'Andrew M. Cuomo' GROUP BY choice2 ORDER BY COUNT(*) DESC` (see breakdown below).
+- 2025-10-31: Created `votes_extrapolated` from `votes_no_cuomo`, inserted weighted random replacements for first-choice `undervote` ballots using `cuomo_second_cdf` and `cuomo_first_replacements`, and rewrote second/third choices per redistribution rules.
 
 ## System Specs
 - OS: Ubuntu 24.04.3 LTS (kernel `6.8.0-86-generic`; `uname -a` confirms host `bubuntu` on x86_64).
@@ -58,3 +59,26 @@ Selma K. Bartholomew,2024
 Write-in,808
 overvote,506
 ```
+
+## Extrapolated First-Choice Totals (Cuomo Removed Scenario)
+```
+choice1,total_votes
+Zohran Kwame Mamdani,510446
+Brad Lander,176418
+Adrienne E. Adams,113660
+undervote,88399
+Scott M. Stringer,75332
+Whitney R. Tilson,46940
+Zellnor Myrie,33273
+Jessica Ramos,20737
+Michael Blake,12405
+advance,12146
+Andrew M. Cuomo,6391
+overvote,6078
+Paperboy Love Prince,4803
+Selma K. Bartholomew,4551
+Write-in,2854
+```
+
+## Conclusion
+Removing Andrew M. Cuomo from the 2025 Democratic mayoral primary and redistributing his ballots with the weighted assumptions above pushes Zohran Kwame Mamdani over the majority threshold immediately—an extrapolated first-round win (≈55%) without requiring additional ranked-choice elimination rounds.
