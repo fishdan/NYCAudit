@@ -10,6 +10,7 @@
 - 2025-10-31: Verified MariaDB connectivity to host `192.168.1.10:3306` as user `dan`, created a `votes` table (`vote_record`, `precinct`, `choice1`–`choice5`), and bulk-loaded `data/combined_precincts.csv` (1,114,433 rows) via `LOAD DATA LOCAL INFILE`.
 - 2025-10-31: Converted `Primary Election 2025 - 06-24-2025_CandidacyID_To_Name.xlsx` to `candidates.csv`, defined the `candidates` table (`candidacy_id`, `default_ballot_name`), and ingested all 951 candidate rows into MariaDB.
 - 2025-10-31: Created the `view_votes_named` view mapping each vote choice to the candidate's default ballot name by joining `votes` against `candidates`.
+- 2025-10-31: Aggregated first-choice (`choice1`) vote totals via `SELECT choice1, COUNT(*) FROM view_votes_named GROUP BY choice1 ORDER BY COUNT(*) DESC` and captured the results below.
 
 ## System Specs
 - OS: Ubuntu 24.04.3 LTS (kernel `6.8.0-86-generic`; `uname -a` confirms host `bubuntu` on x86_64).
@@ -18,3 +19,22 @@
 - Java: OpenJDK 21.0.2 LTS (Temurin 21.0.2+13) (`java -version`).
 - Maven: Apache Maven 3.8.7 (using the above JDK) (`mvn -version`).
 - Shell: `bash`; network access restricted (approval required for downloads).
+
+## First-Choice Vote Totals
+```
+choice1,total_votes
+Zohran Kwame Mamdani,469018
+Andrew M. Cuomo,385398
+Brad Lander,120544
+Adrienne E. Adams,43941
+undervote,40535
+Scott M. Stringer,17668
+Zellnor Myrie,10554
+Whitney R. Tilson,8416
+overvote,5321
+Michael Blake,4313
+Jessica Ramos,4165
+Write-in,1570
+Paperboy Love Prince,1543
+Selma K. Bartholomew,1447
+```
